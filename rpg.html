@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>クリスタルの伝説</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #0a0a14;
+    font-family: "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #wrap {
+    height: 100%;
+    max-width: 520px; margin: 0 auto;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  #screenBox { position: relative; width: 100%; }
+  canvas {
+    display: block;
+    width: 100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: #000;
+  }
+  #muteBtn {
+    position: absolute; top: 6px; right: 6px;
+    width: 36px; height: 36px;
+    border: none; border-radius: 8px;
+    background: rgba(0,0,0,0.45); color: #fff;
+    font-size: 18px;
+    z-index: 5;
+  }
+
+  /* ---- コントローラ ---- */
+  #pad {
+    flex: 1;
+    width: 100%;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 18px 16px;
+    background: linear-gradient(#15152a, #0a0a14);
+  }
+  #dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 54px);
+    grid-template-rows: repeat(3, 54px);
+  }
+  .dbtn {
+    border: none;
+    background: #2a2a4a;
+    color: #9a9adc;
+    font-size: 22px;
+    border-radius: 8px;
+  }
+  .dbtn:active { background: #45457a; }
+  #dU { grid-area: 1 / 2; } #dL { grid-area: 2 / 1; }
+  #dR { grid-area: 2 / 3; } #dD { grid-area: 3 / 2; }
+  #abtns { display: flex; gap: 14px; align-items: center; }
+  .abtn {
+    width: 64px; height: 64px;
+    border: none; border-radius: 50%;
+    font-size: 20px; font-weight: bold; color: #fff;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.4);
+  }
+  .abtn:active { transform: translateY(3px); box-shadow: none; }
+  #btnA { background: #c43c3c; }
+  #btnB { background: #3c5cc4; width: 54px; height: 54px; font-size: 16px; }
+
+  /* ---- タイトル/エンディング ---- */
+  .overlay {
+    position: absolute; inset: 0;
+    background: rgba(4, 6, 24, 0.92);
+    display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px;
+    z-index: 10;
+    color: #fff; text-align: center;
+  }
+  .overlay.show { display: flex; }
+  .overlay h1 {
+    font-size: 28px;
+    color: #aee6ff;
+    text-shadow: 0 0 12px #3a8fd0, 0 3px 0 #123;
+    letter-spacing: 3px;
+  }
+  .overlay .sub { font-size: 12px; opacity: 0.8; line-height: 1.8; }
+  .bigBtn {
+    font-size: 18px; font-weight: bold;
+    padding: 12px 44px;
+    border: 2px solid #aee6ff; border-radius: 6px;
+    background: #16306a; color: #fff;
+  }
+  .bigBtn:active { background: #2a4a9a; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="screenBox">
+    <canvas id="cv" width="256" height="224"></canvas>
+    <button id="muteBtn">♪</button>
+    <div class="overlay show" id="titleOv">
+      <h1>✦ クリスタルの伝説 ✦</h1>
+      <div class="sub">
+        北の山にすみついた魔物ゴーレムをたおし、<br>
+        クリスタルに光をとりもどそう。<br><br>
+        十字キーで移動 / Aで話す・調べる<br>
+        たかい草むらではモンスターが出るぞ!
+      </div>
+      <button class="bigBtn" id="startBtn">ぼうけんに出る</button>
+    </div>
+    <div class="overlay" id="endOv">
+      <h1>✦ FIN ✦</h1>
+      <div class="sub" id="endText"></div>
+      <button class="bigBtn" id="endBtn">タイトルへ</button>
+    </div>
+  </div>
+  <div id="pad">
+    <div id="dpad">
+      <button class="dbtn" id="dU">▲</button>
+      <button class="dbtn" id="dL">◀</button>
+      <button class="dbtn" id="dR">▶</button>
+      <button class="dbtn" id="dD">▼</button>
+    </div>
+    <div id="abtns">
+      <button class="abtn" id="btnB">B</button>
+      <button class="abtn" id="btnA">A</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rint = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+
+const cv = $("cv");
+const ctx = cv.getContext("2d");
+ctx.imageSmoothingEnabled = false;
+const SW = 256, SH = 224, TILE = 16;
+
+// ================= ドット絵スプライト =================
+function gridSprite(rows, pal) {
+  const w = rows[0].length, h = rows.length;
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const g = c.getContext("2d");
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const ch = rows[y][x];
+      if (ch === "." || !pal[ch]) continue;
+      g.fillStyle = pal[ch];
+      g.fillRect(x, y, 1, 1);
+    }
+  return c;
+}
+
+// ---- 主人公(16x18・FF風の2頭身) ----
+const HERO_D1 = [
+"....HHHHHHHH....",
+"...HHHHHHHHHH...",
+"..HHHHHHHHHHHH..",
+"..HHHHHHHHHHHH..",
+"..HHSSSSSSSSHH..",
+"..HSSESSSSESSH..",
+"..HSSSSSSSSSSH..",
+"...SSSSRRSSSS...",
+"....DCCCCCCD....",
+"...CCCCCCCCCC...",
+"..SCCCCWWCCCCS..",
+"..SCCCCWWCCCCS..",
+"...CCCCCCCCCC...",
+"....CCC..CCC....",
+"....DDD..DDD....",
+"....DDD..DDD....",
+"....DD....DD....",
+"...DDD....DDD...",
+];
+const HERO_D2 = HERO_D1.slice(0, 13).concat([
+"....CCC..CCC....",
+"...DDD....DDD...",
+"...DDD....DDD...",
+"....DD....DD....",
+"....DDD..DDD....",
+]);
+const HERO_U1 = [
+"....HHHHHHHH....",
+"...HHHHHHHHHH...",
+"..HHHHHHHHHHHH..",
+"..HHHHHHHHHHHH..",
+"..HHHHHHHHHHHH..",
+"..HHHHHHHHHHHH..",
+"..HHHHHHHHHHHH..",
+"...HHHHHHHHHH...",
+"....DCCCCCCD....",
+"...CCCCCCCCCC...",
+"..SCCCCCCCCCCS..",
+"..SCCCCCCCCCCS..",
+"...CCCCCCCCCC...",
+"....CCC..CCC....",
+"....DDD..DDD....",
+"....DDD..DDD....",
+"....DD....DD....",
+"...DDD....DDD...",
+];
+const HERO_U2 = HERO_U1.slice(0, 13).concat([
+"....CCC..CCC....",
+"...DDD....DDD...",
+"...DDD....DDD...",
+"....DD....DD....",
+"....DDD..DDD....",
+]);
+const HERO_L1 = [
+"....HHHHHHHH....",
+"...HHHHHHHHHH...",
+"..HHHHHHHHHHHH..",
+"..HHHHHHHHHHHH..",
+"..SSSSSHHHHHHH..",
+"..SESSSSHHHHHH..",
+"..SSSSSSHHHHHH..",
+"...SSSSSHHHHH...",
+"....DCCCCCCD....",
+"...CCCCCCCCCC...",
+"...SCCCCCCCCC...",
+"...SCCCCCCCCC...",
+"...CCCCCCCCCC...",
+"....CCCCCCC.....",
+"....DDDDDD......",
+"....DDD.DDD.....",
+"....DD...DD.....",
+"...DDD...DDD....",
+];
+const HERO_L2 = HERO_L1.slice(0, 13).concat([
+"....CCCCCCC.....",
+"...DDDDDDDD.....",
+"..DDD....DDD....",
+"..DD......DD....",
+".DDD......DDD...",
+]);
+const heroPal = { H: "#3fae6a", S: "#ffd9b0", E: "#1a1a2e", R: "#d07060", C: "#3858b8", W: "#e8e8f0", D: "#2a2a3e" };
+const npcPalA = { H: "#7a5a3a", S: "#ffd9b0", E: "#1a1a2e", R: "#d07060", C: "#b04040", W: "#f0e0a0", D: "#2a2a3e" };
+const npcPalB = { H: "#e8c860", S: "#ffd9b0", E: "#1a1a2e", R: "#d07060", C: "#7a4aa0", W: "#f0f0f0", D: "#2a2a3e" };
+const npcPalC = { H: "#cccccc", S: "#ffd9b0", E: "#1a1a2e", R: "#d07060", C: "#4a7a50", W: "#e0d0a0", D: "#2a2a3e" };
+
+function heroSet(pal) {
+  const mk = (g) => gridSprite(g, pal);
+  return {
+    down: [mk(HERO_D1), mk(HERO_D2)],
+    up: [mk(HERO_U1), mk(HERO_U2)],
+    left: [mk(HERO_L1), mk(HERO_L2)],
+  };
+}
+const heroSpr = heroSet(heroPal);
+const npcSprs = [heroSet(npcPalA), heroSet(npcPalB), heroSet(npcPalC)];
+
+// ---- モンスター ----
+const SLIME = gridSprite([
+".....BBBBBB.....",
+"...BBGGGGGGBB...",
+"..BGGGGGGGGGGB..",
+".BGGWWGGGGWWGGB.",
+".BGGWEGGGGWEGGB.",
+"BGGGGGGGGGGGGGGB",
+"BGGGGGGGGGGGGGGB",
+"BGGGGGRRGGGGGGGB",
+".BGGGGGGGGGGGGB.",
+".BGGGGGGGGGGGGB.",
+"..BBGGGGGGGGBB..",
+"....BBBBBBBB....",
+], { G: "#58c8e8", W: "#ffffff", E: "#16203a", B: "#2a5a8a", R: "#e87898" });
+
+const BAT = gridSprite([
+"BB............BB",
+"BBBB........BBBB",
+"BBBBB..BB..BBBBB",
+".BBBBBBBBBBBBBB.",
+".BBBPBBBBBBPBBB.",
+"..BBPEBBBBPEBB..",
+"..BBBBBBBBBBBB..",
+"...BBBWWWWBBB...",
+"....BBBBBBBB....",
+"......B..B......",
+], { B: "#6a4a9a", P: "#f0f0f0", E: "#e83a3a", W: "#f0f0f0" });
+
+const WOLF = gridSprite([
+"....................",
+".EE.................",
+".GGG...........GG...",
+".GGGG..GGGGGGGGGGG..",
+"..GGGGGGGGGGGGGGGG..",
+".WGGGGGGGGGGGGGGGGG.",
+".WWGGGGGGGGGGGGGGGG.",
+"..GGGGGGGGGGGGGGGG..",
+"...GGG..GGGG..GGG...",
+"...GG....GG....GG...",
+"...DD....DD....DD...",
+], { G: "#8a8a9a", W: "#e0e0e8", E: "#e8b83a", D: "#3a3a4a" });
+
+const GOLEM = gridSprite([
+"......RRRRRRRR......",
+".....RRRRRRRRRR.....",
+"....RRREERREERRR....",
+"....RRREERREERRR....",
+".....RRRRRRRRRR.....",
+"..RRRRRRRRRRRRRRRR..",
+".RRRRRRRRRRRRRRRRRR.",
+"RRRR.RRRRRRRRRR.RRRR",
+"RRR..RRRDDDDRRR..RRR",
+"RRR..RRDDDDDDRR..RRR",
+"RRR..RRRDDDDRRR..RRR",
+".RR..RRRRRRRRRR..RR.",
+".....RRRRRRRRRR.....",
+"....RRRR....RRRR....",
+"....RRRR....RRRR....",
+"....RRRR....RRRR....",
+"...RRRRR....RRRRR...",
+], { R: "#9a7a5a", E: "#ff5a3a", D: "#5a4a3a" });
+
+const MONSTERS = {
+  slime: { name: "あおスライム", spr: SLIME, hp: 14, atk: 5, def: 1, exp: 7 },
+  bat: { name: "おおコウモリ", spr: BAT, hp: 10, atk: 6, def: 0, exp: 6 },
+  wolf: { name: "はいいろウルフ", spr: WOLF, hp: 22, atk: 8, def: 2, exp: 14 },
+  golem: { name: "やまのゴーレム", spr: GOLEM, hp: 70, atk: 11, def: 4, exp: 60, boss: true },
+};
+
+// ================= タイル =================
+function makeTile(draw) {
+  const c = document.createElement("canvas");
+  c.width = c.height = TILE;
+  draw(c.getContext("2d"));
+  return c;
+}
+const speck = (g, color, n, seed) => {
+  g.fillStyle = color;
+  let s = seed;
+  for (let i = 0; i < n; i++) {
+    s = (s * 16807) % 2147483647;
+    g.fillRect(s % 16, (s >> 4) % 16, 1, 1);
+  }
+};
+const tileGrass = makeTile((g) => { g.fillStyle = "#58a868"; g.fillRect(0, 0, 16, 16); speck(g, "#68b878", 12, 7); speck(g, "#4a9858", 8, 99); });
+const tileTall = makeTile((g) => {
+  g.fillStyle = "#48a058"; g.fillRect(0, 0, 16, 16);
+  g.fillStyle = "#2e7e44";
+  for (let x = 1; x < 16; x += 3) { g.fillRect(x, 6, 1, 9); g.fillRect(x + 1, 4, 1, 11); }
+  speck(g, "#68c878", 8, 31);
+});
+const tileTree = makeTile((g) => {
+  g.fillStyle = "#58a868"; g.fillRect(0, 0, 16, 16);
+  g.fillStyle = "#5a4030"; g.fillRect(6, 10, 4, 6);
+  g.fillStyle = "#1e6e34"; g.fillRect(2, 2, 12, 9); g.fillRect(4, 0, 8, 12);
+  g.fillStyle = "#2e8e44"; g.fillRect(3, 1, 6, 5); g.fillRect(5, 6, 4, 3);
+});
+const tileWater = [
+  makeTile((g) => { g.fillStyle = "#3a6ad0"; g.fillRect(0, 0, 16, 16); g.fillStyle = "#5a8ae8"; g.fillRect(2, 3, 5, 1); g.fillRect(9, 9, 5, 1); g.fillRect(4, 13, 4, 1); }),
+  makeTile((g) => { g.fillStyle = "#3a6ad0"; g.fillRect(0, 0, 16, 16); g.fillStyle = "#5a8ae8"; g.fillRect(4, 4, 5, 1); g.fillRect(7, 10, 5, 1); g.fillRect(2, 14, 4, 1); }),
+];
+const tileMt = makeTile((g) => {
+  g.fillStyle = "#7a6a58"; g.fillRect(0, 0, 16, 16);
+  g.fillStyle = "#9a8a74"; g.beginPath(); g.moveTo(0, 16); g.lineTo(8, 2); g.lineTo(16, 16); g.fill();
+  g.fillStyle = "#baaa94"; g.fillRect(7, 2, 2, 3);
+  g.fillStyle = "#5a4a3e"; g.fillRect(0, 14, 16, 2);
+});
+const tilePath = makeTile((g) => { g.fillStyle = "#c8a868"; g.fillRect(0, 0, 16, 16); speck(g, "#b89858", 10, 13); speck(g, "#d8b878", 8, 77); });
+const tileRoof = makeTile((g) => {
+  g.fillStyle = "#b04838"; g.fillRect(0, 0, 16, 16);
+  g.fillStyle = "#903828"; for (let y = 3; y < 16; y += 4) g.fillRect(0, y, 16, 1);
+  g.fillStyle = "#c86848"; g.fillRect(0, 0, 16, 2);
+});
+const tileWall = makeTile((g) => {
+  g.fillStyle = "#d8c8a8"; g.fillRect(0, 0, 16, 16);
+  g.fillStyle = "#b8a888"; g.fillRect(0, 7, 16, 1); g.fillRect(8, 0, 1, 7); g.fillRect(4, 8, 1, 8); g.fillRect(12, 8, 1, 8);
+  g.fillStyle = "#8a7a5a"; g.fillRect(0, 15, 16, 1);
+});
+const tileDoor = makeTile((g) => {
+  g.fillStyle = "#d8c8a8"; g.fillRect(0, 0, 16, 16);
+  g.fillStyle = "#6a4a30"; g.fillRect(3, 3, 10, 13);
+  g.fillStyle = "#8a6a44"; g.fillRect(4, 4, 8, 11);
+  g.fillStyle = "#e8c850"; g.fillRect(10, 9, 2, 2);
+});
+const tileFlower = makeTile((g) => {
+  g.fillStyle = "#58a868"; g.fillRect(0, 0, 16, 16);
+  speck(g, "#68b878", 10, 7);
+  g.fillStyle = "#f0e060"; g.fillRect(3, 4, 2, 2); g.fillRect(11, 10, 2, 2);
+  g.fillStyle = "#f08090"; g.fillRect(10, 3, 2, 2); g.fillRect(4, 11, 2, 2);
+});
+const tileCrystal = makeTile((g) => {
+  g.fillStyle = "#7a6a58"; g.fillRect(0, 0, 16, 16);
+  g.fillStyle = "#aee6ff"; g.beginPath(); g.moveTo(8, 1); g.lineTo(13, 8); g.lineTo(8, 15); g.lineTo(3, 8); g.fill();
+  g.fillStyle = "#e0f6ff"; g.beginPath(); g.moveTo(8, 3); g.lineTo(10, 8); g.lineTo(8, 13); g.lineTo(6, 8); g.fill();
+});
+const tileBoss = makeTile((g) => {
+  g.fillStyle = "#c8a868"; g.fillRect(0, 0, 16, 16); speck(g, "#b89858", 10, 13);
+});
+
+// ================= マップ =================
+// g草 t草むら T木 w水 m山 p道 r屋根 W壁 d扉 f花 B=ボス C=クリスタル
+const MAP_SRC = [
+"mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm",
+"mmmmmmmmmmmmmCmmmmmmmmmmmmmmmmmm",
+"mmmmmmmmmmmmpppmmmmmmmmmmmmmmmmm",
+"mmmmmmmmmmmmmpmmmmmmmmmmmmmmmmmm",
+"mmTTTTttmmmmmBmmmmttttTTTTTmmmmm",
+"mTTTttttttmmmpmmtttttttTTTTTmmmm",
+"mTTtttttttgmmpmgttttttttTTTTTmmm",
+"mTtttttttggmmpmggttttttttTTTTmmm",
+"mTTttttgggggmpmgggggtttttTTTmmmm",
+"mmTTtttggggggpgggggggttttTTmmmmm",
+"mmmTTggggggggpggggggggggTTmmwwww",
+"mmmmTgggfggggpgggggfgggggTmwwwww",
+"mmmmTggggggggpggggggggggggwwwwww",
+"mmmTTgggggggppggggggggggwwwwwwww",
+"mmTTgggggggppgggggggggggggwwwwww",
+"mmTggggggggpggggggggggggggggwwww",
+"mTTgggggggppgggggggggggggggggwww",
+"mTggrrrrgggpgggggrrrrggggggggwww",
+"mTggrrrrgggppggggrrrrgggggggggww",
+"mTggWWdWggggpggggWdWWggggggggggw",
+"mTgggggggggjpggggggggggggggggggw",
+"mTTggggggggpppppppppppggggggggww",
+"mTTTgggfggpprrrrrrppggfgggggggww",
+"mmTTggggggpprrrrrrppgggggggggwww",
+"mmmTTgggggppWWWdWWppgggggggwwwww",
+"mmmmTTtttgppggggggppgggttggwwwww",
+"mmmmTTttttgggggggggggttttgwwwwww",
+"mmmmmmttttttgggggggtttttmmmwwwww",
+];
+const MAPH = MAP_SRC.length, MAPW = MAP_SRC[0].length;
+let map = MAP_SRC.map((r) => r.split(""));
+const SOLID = new Set(["T", "w", "m", "r", "W", "d", "B", "C"]);
+const tileOf = {
+  g: () => tileGrass, t: () => tileTall, T: () => tileTree,
+  w: (t) => tileWater[Math.floor(t * 2) % 2], m: () => tileMt,
+  p: () => tilePath, j: () => tilePath,
+  r: () => tileRoof, W: () => tileWall, d: () => tileDoor,
+  f: () => tileFlower, B: () => tileBoss, C: () => tileCrystal,
+};
+
+// NPC
+const npcs = [
+  { x: 15, y: 20, spr: 0, name: "村長", lines: [
+    "よく来てくれた、勇者どのよ。",
+    "北の山に ゴーレムがすみつき、|クリスタルへの道を ふさいでおる…",
+    "やつを たおして、クリスタルに|光を とりもどしてくれい!",
+  ]},
+  { x: 8, y: 21, spr: 1, name: "少女", lines: [
+    "たかい草むらには モンスターが|出るんだって。気をつけてね!",
+    "たたかうと つよくなれるらしいよ。",
+  ]},
+  { x: 19, y: 21, spr: 2, name: "旅の商人", lines: [
+    "おお、これから山へ行くのかい?|なら これを持っていきな。",
+    "ポーションを 2つ 手に入れた!",
+  ], gift: true },
+];
+
+// ================= ゲーム状態 =================
+let state = "title"; // title / field / dialog / battle / ending
+const hero = {
+  tx: 13, ty: 21, px: 13 * TILE, py: 21 * TILE,
+  dir: "down", moving: false, frame: 0, steps: 0,
+  lv: 1, hp: 32, maxHp: 32, mp: 8, maxMp: 8, atk: 7, def: 3,
+  exp: 0, potions: 1, gotGift: false, bossDown: false,
+};
+const expNext = () => hero.lv * 15;
+
+// ---- 会話 ----
+let dialog = null; // {lines:[], idx, shown, name, onEnd}
+function startDialog(name, lines, onEnd) {
+  dialog = { lines, idx: 0, shown: 0, name, onEnd: onEnd || null };
+  state = "dialog";
+}
+
+// ---- 戦闘 ----
+let battle = null;
+function startBattle(kind) {
+  const m = MONSTERS[kind];
+  battle = {
+    kind,
+    name: m.name, spr: m.spr,
+    hp: m.hp, maxHp: m.hp, atk: m.atk, def: m.def, exp: m.exp, boss: !!m.boss,
+    phase: "intro", // intro/menu/magic/item/msg/end
+    cursor: 0, menu: "main",
+    msgs: [`${m.name} が あらわれた!`],
+    next: null, shake: 0, flash: 0, heroFlash: 0,
+  };
+  state = "battle";
+  playSong("battle");
+  sfx(220, 0.2, 0.2, "square");
+}
+
+// ================= サウンド(チップチューン) =================
+let actx = null, muted = false;
+let song = null, songStart = 0, noteIdx = 0;
+const mf = (n) => 440 * Math.pow(2, (n - 69) / 12);
+function initAudio() {
+  if (actx) { actx.resume(); return; }
+  try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+}
+function sfx(freq, dur = 0.1, vol = 0.12, type = "square") {
+  if (!actx || muted) return;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+  o.connect(g).connect(actx.destination);
+  o.start(); o.stop(actx.currentTime + dur);
+}
+// 曲: [拍, MIDIノート, 長さ(拍), 波形, 音量]
+function arp(start, notes, step, dur, wave, vol) {
+  return notes.map((n, i) => [start + i * step, n, dur, wave, vol]);
+}
+const SONGS = {
+  field: {
+    bpm: 96, loop: 16,
+    notes: [
+      ...arp(0, [57, 60, 64, 69, 64, 60], 0.66, 0.6, "triangle", 0.07),
+      ...arp(4, [53, 57, 60, 65, 60, 57], 0.66, 0.6, "triangle", 0.07),
+      ...arp(8, [55, 59, 62, 67, 62, 59], 0.66, 0.6, "triangle", 0.07),
+      ...arp(12, [52, 55, 59, 64, 59, 55], 0.66, 0.6, "triangle", 0.07),
+      [0, 81, 1.8, "square", 0.025], [2, 79, 1.8, "square", 0.025],
+      [4, 77, 3.6, "square", 0.025],
+      [8, 79, 1.8, "square", 0.025], [10, 83, 1.8, "square", 0.025],
+      [12, 81, 3.6, "square", 0.025],
+    ],
+  },
+  battle: {
+    bpm: 150, loop: 8,
+    notes: [
+      ...arp(0, [45, 45, 48, 45, 50, 45, 48, 45], 1, 0.5, "sawtooth", 0.06),
+      ...arp(0, [69, 72, 76, 72], 0.5, 0.4, "square", 0.035),
+      ...arp(2, [69, 72, 77, 72], 0.5, 0.4, "square", 0.035),
+      ...arp(4, [68, 72, 76, 72], 0.5, 0.4, "square", 0.035),
+      ...arp(6, [69, 74, 77, 81], 0.5, 0.4, "square", 0.035),
+    ],
+  },
+};
+function playSong(name) {
+  song = SONGS[name] || null;
+  noteIdx = 0;
+  if (actx) songStart = actx.currentTime + 0.1;
+}
+setInterval(() => {
+  if (!actx || !song || muted) return;
+  const spb = 60 / song.bpm;
+  const ahead = actx.currentTime + 0.3;
+  while (true) {
+    if (noteIdx >= song.notes.length) {
+      songStart += song.loop * spb;
+      noteIdx = 0;
+    }
+    const [b, n, d, w, v] = song.notes[noteIdx];
+    const t = songStart + b * spb;
+    if (t > ahead) break;
+    if (t >= actx.currentTime - 0.05) {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = w; o.frequency.value = mf(n);
+      g.gain.setValueAtTime(v, t);
+      g.gain.setValueAtTime(v, t + d * spb * 0.7);
+      g.gain.linearRampToValueAtTime(0.001, t + d * spb);
+      o.connect(g).connect(actx.destination);
+      o.start(t); o.stop(t + d * spb + 0.02);
+    }
+    noteIdx++;
+  }
+}, 60);
+$("muteBtn").addEventListener("click", () => {
+  muted = !muted;
+  $("muteBtn").textContent = muted ? "🔇" : "♪";
+  if (!muted && actx) playSong(state === "battle" ? "battle" : "field");
+});
+
+// ================= 入力 =================
+const held = { up: false, down: false, left: false, right: false };
+let pressA = false, pressB = false;
+function bindHold(el, key) {
+  const on = (e) => { held[key] = true; e.preventDefault(); };
+  const off = (e) => { held[key] = false; e.preventDefault(); };
+  el.addEventListener("touchstart", on, { passive: false });
+  el.addEventListener("touchend", off, { passive: false });
+  el.addEventListener("touchcancel", off, { passive: false });
+  el.addEventListener("mousedown", on);
+  el.addEventListener("mouseup", off);
+  el.addEventListener("mouseleave", off);
+}
+bindHold($("dU"), "up"); bindHold($("dD"), "down");
+bindHold($("dL"), "left"); bindHold($("dR"), "right");
+const bindTap = (el, fn) => {
+  el.addEventListener("touchstart", (e) => { fn(); e.preventDefault(); }, { passive: false });
+  el.addEventListener("mousedown", () => fn());
+};
+bindTap($("btnA"), () => { pressA = true; });
+bindTap($("btnB"), () => { pressB = true; });
+window.addEventListener("keydown", (e) => {
+  if (e.repeat) return;
+  if (e.key === "ArrowUp") held.up = true;
+  if (e.key === "ArrowDown") held.down = true;
+  if (e.key === "ArrowLeft") held.left = true;
+  if (e.key === "ArrowRight") held.right = true;
+  if (e.key === "z" || e.key === "Enter") pressA = true;
+  if (e.key === "x") pressB = true;
+});
+window.addEventListener("keyup", (e) => {
+  if (e.key === "ArrowUp") held.up = false;
+  if (e.key === "ArrowDown") held.down = false;
+  if (e.key === "ArrowLeft") held.left = false;
+  if (e.key === "ArrowRight") held.right = false;
+});
+
+// ================= フィールド更新 =================
+const walkable = (x, y) => {
+  if (x < 0 || y < 0 || x >= MAPW || y >= MAPH) return false;
+  if (SOLID.has(map[y][x])) return false;
+  if (npcs.some((n) => n.x === x && n.y === y)) return false;
+  return true;
+};
+const WALK_SPEED = 80; // px/s
+
+function updateField(dt) {
+  if (hero.moving) {
+    const gx = hero.tx * TILE, gy = hero.ty * TILE;
+    const d = WALK_SPEED * dt;
+    hero.px += clamp(gx - hero.px, -d, d);
+    hero.py += clamp(gy - hero.py, -d, d);
+    if (hero.px === gx && hero.py === gy) {
+      hero.moving = false;
+      hero.steps++;
+      const t = map[hero.ty][hero.tx];
+      if (t === "t" && Math.random() < 0.13) {
+        const pool = hero.ty < 14 ? ["wolf", "bat", "wolf"] : ["slime", "bat", "slime"];
+        startBattle(pool[rint(0, pool.length - 1)]);
+        return;
+      }
+    }
+  }
+  if (!hero.moving) {
+    let dx = 0, dy = 0;
+    if (held.up) { hero.dir = "up"; dy = -1; }
+    else if (held.down) { hero.dir = "down"; dy = 1; }
+    else if (held.left) { hero.dir = "left"; dx = -1; }
+    else if (held.right) { hero.dir = "right"; dx = 1; }
+    if (dx || dy) {
+      const nx = hero.tx + dx, ny = hero.ty + dy;
+      if (walkable(nx, ny)) {
+        hero.tx = nx; hero.ty = ny; hero.moving = true;
+      }
+    }
+  }
+  if (pressA) {
+    pressA = false;
+    const dx = hero.dir === "left" ? -1 : hero.dir === "right" ? 1 : 0;
+    const dy = hero.dir === "up" ? -1 : hero.dir === "down" ? 1 : 0;
+    const fx = hero.tx + dx, fy = hero.ty + dy;
+    const npc = npcs.find((n) => n.x === fx && n.y === fy);
+    if (npc) {
+      sfx(660, 0.06, 0.1);
+      startDialog(npc.name, npc.lines.slice(), () => {
+        if (npc.gift && !hero.gotGift) {
+          hero.gotGift = true;
+          hero.potions += 2;
+          sfx(880, 0.15, 0.15); setTimeout(() => sfx(1175, 0.2, 0.15), 120);
+        }
+      });
+      return;
+    }
+    const ft = (fy >= 0 && fy < MAPH) ? map[fy][fx] : "";
+    if (ft === "B") {
+      startDialog("???", ["ゴ ゴ ゴ ゴ …", "「ここから先は 通さんぞ…!」"], () => startBattle("golem"));
+    } else if (ft === "C") {
+      startDialog("", [
+        "クリスタルに 手をかざした…",
+        "まばゆい光が あふれだす!",
+        "世界に 光が もどった!",
+      ], () => showEnding());
+    }
+  }
+  pressB = false;
+}
+
+function updateDialog() {
+  const d = dialog;
+  const line = d.lines[d.idx].replace("|", "\n");
+  if (d.shown < line.length) d.shown += 0.8;
+  if (pressA) {
+    pressA = false;
+    if (d.shown < line.length) { d.shown = line.length; }
+    else {
+      d.idx++;
+      d.shown = 0;
+      if (d.idx >= d.lines.length) {
+        const cb = d.onEnd;
+        dialog = null;
+        state = "field";
+        if (cb) cb();
+      } else sfx(660, 0.04, 0.08);
+    }
+  }
+  pressB = false;
+}
+
+// ================= 戦闘 =================
+function dmgCalc(atk, def) {
+  return Math.max(1, atk * 2 - def + rint(-2, 3));
+}
+function pushMsg(b, msg, next) {
+  b.msgs.push(msg);
+  if (next) b.next = next;
+}
+function heroAttack() {
+  const b = battle;
+  const d = dmgCalc(hero.atk, b.def);
+  b.hp = Math.max(0, b.hp - d);
+  b.shake = 0.3;
+  sfx(180, 0.12, 0.18, "sawtooth");
+  pushMsg(b, `${b.name}に ${d} のダメージ!`, b.hp <= 0 ? "win" : "enemy");
+  b.phase = "msg";
+}
+function heroFire() {
+  const b = battle;
+  if (hero.mp < 3) { pushMsg(b, "MPが たりない!", "menu"); b.phase = "msg"; return; }
+  hero.mp -= 3;
+  const d = 12 + hero.lv * 3 + rint(0, 4);
+  b.hp = Math.max(0, b.hp - d);
+  b.flash = 0.3; b.shake = 0.3;
+  sfx(740, 0.25, 0.18, "sawtooth");
+  pushMsg(b, `ファイア! ${b.name}に ${d} のダメージ!`, b.hp <= 0 ? "win" : "enemy");
+  b.phase = "msg";
+}
+function heroHeal() {
+  const b = battle;
+  if (hero.mp < 2) { pushMsg(b, "MPが たりない!", "menu"); b.phase = "msg"; return; }
+  hero.mp -= 2;
+  const h = 14 + hero.lv * 2;
+  hero.hp = Math.min(hero.maxHp, hero.hp + h);
+  sfx(988, 0.2, 0.12, "triangle");
+  pushMsg(b, `ケアル! HPが ${h} かいふくした!`, "enemy");
+  b.phase = "msg";
+}
+function usePotion() {
+  const b = battle;
+  if (hero.potions <= 0) { pushMsg(b, "ポーションを 持っていない!", "menu"); b.phase = "msg"; return; }
+  hero.potions--;
+  hero.hp = Math.min(hero.maxHp, hero.hp + 25);
+  sfx(988, 0.2, 0.12, "triangle");
+  pushMsg(b, "ポーションで HPが 25 かいふく!", "enemy");
+  b.phase = "msg";
+}
+function tryRun() {
+  const b = battle;
+  if (b.boss) { pushMsg(b, "にげられない!", "enemy"); b.phase = "msg"; return; }
+  if (Math.random() < 0.7) { pushMsg(b, "うまく にげだした!", "flee"); }
+  else pushMsg(b, "にげられなかった!", "enemy");
+  b.phase = "msg";
+}
+function enemyTurn() {
+  const b = battle;
+  const d = dmgCalc(b.atk, hero.def);
+  hero.hp = Math.max(0, hero.hp - d);
+  b.heroFlash = 0.3;
+  sfx(120, 0.15, 0.18, "square");
+  pushMsg(b, `${b.name}の こうげき! ${d} のダメージ!`, hero.hp <= 0 ? "lose" : "menu");
+  b.phase = "msg";
+}
+function winBattle() {
+  const b = battle;
+  hero.exp += b.exp;
+  const msgs = [`${b.name}を たおした!`, `${b.exp} の けいけんちを かくとく!`];
+  while (hero.exp >= expNext()) {
+    hero.exp -= expNext();
+    hero.lv++;
+    hero.maxHp += 6; hero.maxMp += 2; hero.atk += 2; hero.def += 1;
+    hero.hp = hero.maxHp; hero.mp = hero.maxMp;
+    msgs.push(`レベルが ${hero.lv} に あがった!`);
+  }
+  b.msgs.push(...msgs);
+  b.next = b.boss ? "bossWin" : "flee";
+  b.phase = "msg";
+  sfx(523, 0.12, 0.15); setTimeout(() => sfx(659, 0.12, 0.15), 130); setTimeout(() => sfx(784, 0.25, 0.15), 260);
+}
+
+const MAIN_MENU = ["たたかう", "まほう", "どうぐ", "にげる"];
+const MAGIC_MENU = ["ファイア (MP3)", "ケアル (MP2)", "もどる"];
+const ITEM_MENU = () => [`ポーション ×${hero.potions}`, "もどる"];
+
+function updateBattle(dt) {
+  const b = battle;
+  b.shake = Math.max(0, b.shake - dt);
+  b.flash = Math.max(0, b.flash - dt);
+  b.heroFlash = Math.max(0, b.heroFlash - dt);
+
+  if (b.phase === "intro" || b.phase === "msg") {
+    if (pressA) {
+      pressA = false;
+      b.msgs.shift();
+      if (b.msgs.length === 0) {
+        const nx = b.phase === "intro" ? "menu" : b.next;
+        if (nx === "menu") { b.phase = "menu"; b.menu = "main"; b.cursor = 0; }
+        else if (nx === "enemy") enemyTurn();
+        else if (nx === "win") winBattle();
+        else if (nx === "flee") endBattle(false);
+        else if (nx === "bossWin") endBattle(true);
+        else if (nx === "lose") loseBattle();
+        else { b.phase = "menu"; b.menu = "main"; b.cursor = 0; }
+      }
+    }
+    pressB = false;
+    return;
+  }
+
+  if (b.phase === "menu") {
+    const items = b.menu === "main" ? MAIN_MENU : b.menu === "magic" ? MAGIC_MENU : ITEM_MENU();
+    if (pressDir("up")) { b.cursor = (b.cursor + items.length - 1) % items.length; sfx(880, 0.03, 0.06); }
+    if (pressDir("down")) { b.cursor = (b.cursor + 1) % items.length; sfx(880, 0.03, 0.06); }
+    if (pressB) {
+      pressB = false;
+      if (b.menu !== "main") { b.menu = "main"; b.cursor = 0; sfx(440, 0.05, 0.08); }
+    }
+    if (pressA) {
+      pressA = false;
+      sfx(990, 0.05, 0.08);
+      if (b.menu === "main") {
+        if (b.cursor === 0) heroAttack();
+        else if (b.cursor === 1) { b.menu = "magic"; b.cursor = 0; }
+        else if (b.cursor === 2) { b.menu = "item"; b.cursor = 0; }
+        else tryRun();
+      } else if (b.menu === "magic") {
+        if (b.cursor === 0) heroFire();
+        else if (b.cursor === 1) heroHeal();
+        else { b.menu = "main"; b.cursor = 0; }
+      } else {
+        if (b.cursor === 0) usePotion();
+        else { b.menu = "main"; b.cursor = 0; }
+      }
+    }
+  }
+}
+// 方向キーの「押した瞬間」検出
+const dirPrev = { up: false, down: false, left: false, right: false };
+function pressDir(d) {
+  const now = held[d], was = dirPrev[d];
+  return now && !was;
+}
+function snapshotDirs() {
+  for (const k of Object.keys(dirPrev)) dirPrev[k] = held[k];
+}
+
+function endBattle(bossWin) {
+  battle = null;
+  state = "field";
+  playSong("field");
+  if (bossWin) {
+    hero.bossDown = true;
+    for (let y = 0; y < MAPH; y++)
+      for (let x = 0; x < MAPW; x++)
+        if (map[y][x] === "B") map[y][x] = "p";
+    startDialog("", ["ゴーレムは くずれさった…", "山の道が ひらかれた!|北のクリスタルへ むかおう。"]);
+  }
+}
+function loseBattle() {
+  battle = null;
+  hero.hp = hero.maxHp;
+  hero.mp = hero.maxMp;
+  hero.tx = 13; hero.ty = 21;
+  hero.px = hero.tx * TILE; hero.py = hero.ty * TILE;
+  hero.dir = "down"; hero.moving = false;
+  state = "field";
+  playSong("field");
+  startDialog("", ["目のまえが まっくらになった…", "気がつくと 村に もどっていた。"]);
+}
+function showEnding() {
+  state = "ending";
+  song = null;
+  $("endText").innerHTML =
+    `クリスタルに光がもどり、<br>世界にふたたび朝が来た。<br><br>` +
+    `とうたつレベル: ${hero.lv} / たおした魔物との戦い: ${hero.steps}歩の旅`;
+  $("endOv").classList.add("show");
+  if (actx && !muted) {
+    [523, 587, 659, 784, 880, 1047].forEach((f, i) => setTimeout(() => sfx(f, 0.3, 0.12, "triangle"), i * 180));
+  }
+}
+
+// ================= 描画 =================
+function drawWindow(x, y, w, h) {
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, "#2030a0");
+  g.addColorStop(1, "#101050");
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = "#e8e8f8";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+  ctx.strokeStyle = "#7080d0";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 3.5, y + 3.5, w - 7, h - 7);
+}
+function text(s, x, y, color = "#fff", size = 10) {
+  ctx.fillStyle = color;
+  ctx.font = `bold ${size}px monospace, sans-serif`;
+  ctx.textBaseline = "top";
+  ctx.fillText(s, x, y);
+}
+
+let animT = 0;
+function heroSprite(unit, dir, frame) {
+  if (dir === "right") return { img: unit.left[frame], flip: true };
+  return { img: unit[dir === "right" ? "left" : dir][frame], flip: false };
+}
+function drawUnit(unit, dir, frame, sx, sy, scale = 1) {
+  const { img, flip } = heroSprite(unit, dir, frame);
+  ctx.save();
+  if (flip) {
+    ctx.translate(sx, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(img, -8 * scale, sy - 2 * scale, 16 * scale, 18 * scale);
+  } else {
+    ctx.drawImage(img, sx - 8 * scale, sy - 2 * scale, 16 * scale, 18 * scale);
+  }
+  ctx.restore();
+}
+
+function renderField() {
+  const camX = clamp(hero.px - SW / 2 + 8, 0, MAPW * TILE - SW);
+  const camY = clamp(hero.py - SH / 2 + 8, 0, MAPH * TILE - SH);
+  const x0 = Math.floor(camX / TILE), y0 = Math.floor(camY / TILE);
+  for (let y = y0; y <= y0 + SH / TILE && y < MAPH; y++) {
+    for (let x = x0; x <= x0 + SW / TILE && x < MAPW; x++) {
+      const ch = map[y][x];
+      const t = (tileOf[ch] || tileOf.g)(animT);
+      ctx.drawImage(t, x * TILE - camX, y * TILE - camY);
+    }
+  }
+  // NPC
+  for (const n of npcs) {
+    const set = npcSprs[n.spr];
+    drawUnit(set, "down", Math.floor(animT * 2) % 2, n.x * TILE - camX + 8, n.y * TILE - camY);
+  }
+  // 主人公
+  const frame = hero.moving ? Math.floor(animT * 6) % 2 : 0;
+  drawUnit(heroSpr, hero.dir, frame, hero.px - camX + 8, hero.py - camY);
+
+  // ステータス簡易表示
+  drawWindow(2, 2, 110, 20);
+  text(`Lv${hero.lv}  HP ${hero.hp}/${hero.maxHp}`, 8, 8, "#fff", 9);
+
+  if (state === "dialog" && dialog) renderDialog();
+}
+
+function renderDialog() {
+  const d = dialog;
+  drawWindow(4, SH - 62, SW - 8, 58);
+  if (d.name) {
+    drawWindow(4, SH - 78, 70, 18);
+    text(d.name, 10, SH - 73, "#ffe080", 9);
+  }
+  const full = d.lines[d.idx].replace("|", "\n");
+  const shown = full.slice(0, Math.floor(d.shown));
+  const rows = shown.split("\n");
+  rows.forEach((r, i) => text(r, 12, SH - 52 + i * 16, "#fff", 11));
+  if (d.shown >= full.length && Math.floor(animT * 2) % 2 === 0)
+    text("▼", SW - 24, SH - 16, "#fff", 10);
+}
+
+function renderBattle() {
+  const b = battle;
+  // 背景
+  const g = ctx.createLinearGradient(0, 0, 0, SH);
+  g.addColorStop(0, "#101030");
+  g.addColorStop(0.55, "#303860");
+  g.addColorStop(0.56, "#3a5a40");
+  g.addColorStop(1, "#2a4030");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, SW, SH);
+  // 星
+  for (let i = 0; i < 20; i++) {
+    ctx.fillStyle = i % 3 ? "#aab" : "#ffe";
+    ctx.fillRect((i * 47 + 13) % SW, (i * 31 + 7) % 110, 1, 1);
+  }
+
+  // 敵(左側)
+  const shakeX = b.shake > 0 ? Math.sin(b.shake * 60) * 3 : 0;
+  const sc = b.boss ? 4 : 3;
+  const ew = b.spr.width * sc, eh = b.spr.height * sc;
+  if (!(b.flash > 0 && Math.floor(b.flash * 20) % 2)) {
+    ctx.drawImage(b.spr, 64 - ew / 2 + shakeX, 118 - eh, ew, eh);
+  }
+  // 影
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  ctx.beginPath();
+  ctx.ellipse(64 + shakeX, 122, ew / 2.4, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 主人公(右側・横向き)
+  if (!(b.heroFlash > 0 && Math.floor(b.heroFlash * 20) % 2)) {
+    drawUnit(heroSpr, "left", Math.floor(animT * 2) % 2, 200, 86, 3);
+  }
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  ctx.beginPath();
+  ctx.ellipse(200, 142, 22, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 敵名ウィンドウ + HPバー(ボスのみ表示)
+  drawWindow(4, 4, 130, 24);
+  text(b.name, 10, 11, "#fff", 9);
+  if (b.boss) {
+    ctx.fillStyle = "#400";
+    ctx.fillRect(10, 22, 100, 3);
+    ctx.fillStyle = "#e04040";
+    ctx.fillRect(10, 22, 100 * (b.hp / b.maxHp), 3);
+  }
+
+  // ステータスウィンドウ
+  drawWindow(140, SH - 70, 112, 66);
+  text("ゆうしゃ", 148, SH - 62, "#ffe080", 9);
+  text(`HP ${hero.hp}/${hero.maxHp}`, 148, SH - 47, "#fff", 9);
+  text(`MP ${hero.mp}/${hero.maxMp}`, 148, SH - 33, "#9ad", 9);
+  text(`Lv ${hero.lv}`, 148, SH - 19, "#fff", 9);
+
+  // コマンド/メッセージウィンドウ
+  drawWindow(4, SH - 70, 132, 66);
+  if (b.phase === "menu") {
+    const items = b.menu === "main" ? MAIN_MENU : b.menu === "magic" ? MAGIC_MENU : ITEM_MENU();
+    items.forEach((it, i) => {
+      if (i === b.cursor) text("▶", 10, SH - 62 + i * 15, "#ffe080", 9);
+      text(it, 22, SH - 62 + i * 15, i === b.cursor ? "#ffe080" : "#fff", 9);
+    });
+  } else if (b.msgs.length) {
+    // メッセージを折り返し表示
+    const msg = b.msgs[0];
+    const maxChars = 13;
+    for (let i = 0; i * maxChars < msg.length && i < 3; i++)
+      text(msg.slice(i * maxChars, (i + 1) * maxChars), 10, SH - 62 + i * 15, "#fff", 9);
+    if (Math.floor(animT * 2) % 2 === 0) text("▼", 120, SH - 16, "#fff", 9);
+  }
+}
+
+// ================= メインループ =================
+let lastT = performance.now();
+function loop(now) {
+  let dt = (now - lastT) / 1000;
+  lastT = now;
+  dt = Math.min(dt, 0.05);
+  animT += dt;
+
+  if (state === "field") updateField(dt);
+  else if (state === "dialog") updateDialog();
+  else if (state === "battle") updateBattle(dt);
+  else { pressA = false; pressB = false; }
+
+  ctx.clearRect(0, 0, SW, SH);
+  if (state === "field" || state === "dialog") renderField();
+  else if (state === "battle") renderBattle();
+  else { ctx.fillStyle = "#000"; ctx.fillRect(0, 0, SW, SH); }
+
+  snapshotDirs();
+  requestAnimationFrame(loop);
+}
+
+$("startBtn").addEventListener("click", () => {
+  initAudio();
+  $("titleOv").classList.remove("show");
+  state = "field";
+  playSong("field");
+});
+$("endBtn").addEventListener("click", () => {
+  location.reload();
+});
+document.addEventListener("visibilitychange", () => { lastT = performance.now(); });
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
