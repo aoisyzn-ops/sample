@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ともだちコレクション</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    font-family: "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif;
+    background: linear-gradient(#aee3ff 0%, #d8f3ff 60%, #b8e6b8 100%);
+    overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app { max-width: 480px; margin: 0 auto; height: 100%; position: relative; overflow: hidden; }
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; }
+  .screen.show { display: flex; }
+
+  /* ---- ホーム(マンション) ---- */
+  #title {
+    text-align: center; padding: 14px 0 6px;
+    font-size: 24px; font-weight: bold; color: #2b6777;
+    text-shadow: 0 2px 0 rgba(255,255,255,0.7);
+  }
+  #news {
+    margin: 0 12px 10px; padding: 8px 12px;
+    background: rgba(255,255,255,0.85);
+    border-radius: 999px;
+    font-size: 13px; color: #555;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+  }
+  #building {
+    flex: 1;
+    margin: 0 16px;
+    background: #f5e6c8;
+    border: 4px solid #c9a86a;
+    border-bottom: none;
+    border-radius: 16px 16px 0 0;
+    padding: 18px 12px 12px;
+    overflow-y: auto;
+    box-shadow: inset 0 0 0 4px #fff8ea;
+  }
+  #rooms { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .room {
+    position: relative;
+    background: linear-gradient(#bfe9ff, #e8f8ff);
+    border: 3px solid #8a6d3b;
+    border-radius: 10px;
+    aspect-ratio: 1 / 1.1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px;
+    box-shadow: 0 3px 0 #8a6d3b;
+    cursor: pointer;
+  }
+  .room:active { transform: translateY(2px); box-shadow: 0 1px 0 #8a6d3b; }
+  .room .face { font-size: 38px; line-height: 1; }
+  .room .rname {
+    font-size: 11px; font-weight: bold; color: #5a4632;
+    max-width: 90%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .room.empty { background: rgba(255,255,255,0.5); border-style: dashed; box-shadow: none; }
+  .room.empty .face { color: #b0a080; font-size: 32px; }
+  .room .badge {
+    position: absolute; top: -8px; right: -8px;
+    background: #ff5252; color: #fff;
+    border-radius: 50%; width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: bold;
+    box-shadow: 0 2px 3px rgba(0,0,0,0.25);
+  }
+
+  /* ---- 詳細画面 ---- */
+  #detail { background: linear-gradient(#fff3d6 0%, #ffe9b8 100%); }
+  #backBtn {
+    align-self: flex-start;
+    margin: 12px;
+    padding: 8px 18px;
+    border: none; border-radius: 999px;
+    background: #2b6777; color: #fff;
+    font-size: 15px; font-weight: bold;
+    box-shadow: 0 3px 0 #1a4652;
+  }
+  #backBtn:active { transform: translateY(2px); box-shadow: none; }
+  #bubble {
+    margin: 4px 24px;
+    min-height: 64px;
+    background: #fff;
+    border-radius: 16px;
+    padding: 12px 16px;
+    font-size: 15px; color: #444;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    position: relative;
+  }
+  #bubble::after {
+    content: "";
+    position: absolute; bottom: -10px; left: 50%;
+    transform: translateX(-50%);
+    border: 10px solid transparent;
+    border-top-color: #fff;
+    border-bottom: none;
+  }
+  #bigFace { text-align: center; font-size: 96px; margin: 18px 0 4px; }
+  #dName { text-align: center; font-size: 22px; font-weight: bold; color: #5a4632; }
+  #dPersona { text-align: center; font-size: 13px; color: #8a7a5a; margin-bottom: 8px; }
+  #stats { margin: 4px 28px; display: flex; flex-direction: column; gap: 8px; }
+  .stat { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #6a5a3a; }
+  .stat .slabel { width: 86px; font-weight: bold; }
+  .bar {
+    flex: 1; height: 14px;
+    background: #fff;
+    border-radius: 999px;
+    overflow: hidden;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.15);
+  }
+  .bar > div { height: 100%; border-radius: 999px; transition: width 0.3s; }
+  #hungerBar > div { background: linear-gradient(#ffb347, #ff8c00); }
+  #happyBar  > div { background: linear-gradient(#7ed957, #4caf50); }
+  #xpBar     > div { background: linear-gradient(#64b5f6, #1e88e5); }
+  #dFriends { margin: 10px 28px 0; font-size: 13px; color: #6a5a3a; }
+  #actions {
+    margin-top: auto;
+    display: flex; gap: 10px;
+    padding: 16px;
+  }
+  #actions button {
+    flex: 1;
+    padding: 14px 0;
+    border: none; border-radius: 14px;
+    font-size: 16px; font-weight: bold;
+    color: #fff;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.2);
+  }
+  #actions button:active { transform: translateY(3px); box-shadow: none; }
+  #feedBtn { background: #ff8c42; }
+  #playBtn { background: #4caf50; }
+  #talkBtn { background: #42a5f5; }
+  #byeBtn {
+    align-self: center;
+    margin-bottom: 10px;
+    background: none; border: none;
+    color: #b09060; font-size: 12px;
+    text-decoration: underline;
+  }
+
+  /* ---- ともだち作成モーダル ---- */
+  #addModal {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 20;
+  }
+  #addModal.show { display: flex; }
+  #addCard {
+    width: 88%; max-width: 360px;
+    background: #fff;
+    border-radius: 20px;
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  #addCard h2 { font-size: 18px; color: #2b6777; text-align: center; }
+  #faceGrid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  }
+  #faceGrid .fopt {
+    font-size: 32px; text-align: center;
+    padding: 6px 0;
+    border-radius: 10px;
+    border: 3px solid transparent;
+    background: #f4f4f4;
+    cursor: pointer;
+  }
+  #faceGrid .fopt.sel { border-color: #42a5f5; background: #e3f2fd; }
+  #nameInput {
+    font-size: 16px;
+    padding: 10px 14px;
+    border: 2px solid #ccc; border-radius: 10px;
+    width: 100%;
+  }
+  #addCard .row { display: flex; gap: 10px; }
+  #addCard .row button {
+    flex: 1;
+    padding: 12px 0;
+    border: none; border-radius: 12px;
+    font-size: 15px; font-weight: bold;
+  }
+  #cancelBtn { background: #eee; color: #666; }
+  #createBtn { background: #ff6b6b; color: #fff; box-shadow: 0 3px 0 #c94c4c; }
+  #createBtn:active { transform: translateY(2px); box-shadow: none; }
+
+  /* ---- ふきだしポップ ---- */
+  @keyframes pop { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  .pop { animation: pop 0.18s ease-out; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ホーム -->
+  <div id="home" class="screen show">
+    <div id="title">🏠 ともだちコレクション</div>
+    <div id="news">ともだちを作ってみよう!</div>
+    <div id="building"><div id="rooms"></div></div>
+  </div>
+
+  <!-- ともだち詳細 -->
+  <div id="detail" class="screen">
+    <button id="backBtn">← マンションへ</button>
+    <div id="bubble">…</div>
+    <div id="bigFace">😀</div>
+    <div id="dName"></div>
+    <div id="dPersona"></div>
+    <div id="stats">
+      <div class="stat"><span class="slabel">🍙 まんぷく度</span><div class="bar" id="hungerBar"><div></div></div></div>
+      <div class="stat"><span class="slabel">😊 ごきげん度</span><div class="bar" id="happyBar"><div></div></div></div>
+      <div class="stat"><span class="slabel">💖 なかよし Lv.<span id="dLevel">1</span></span><div class="bar" id="xpBar"><div></div></div></div>
+    </div>
+    <div id="dFriends"></div>
+    <div id="actions">
+      <button id="feedBtn">🍙 ごはん</button>
+      <button id="playBtn">🎮 あそぶ</button>
+      <button id="talkBtn">💬 はなす</button>
+    </div>
+    <button id="byeBtn">おわかれする…</button>
+  </div>
+
+  <!-- ともだち作成 -->
+  <div id="addModal">
+    <div id="addCard">
+      <h2>あたらしいともだち</h2>
+      <div id="faceGrid"></div>
+      <input id="nameInput" type="text" maxlength="8" placeholder="なまえ(8文字まで)">
+      <div class="row">
+        <button id="cancelBtn">やめる</button>
+        <button id="createBtn">この子にする!</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const FACES = ["😀","😄","😊","😎","🤓","😺","🐶","🐰","🐻","🦊","🐼","🐸","🐥","🦄","👻","🤖"];
+const MAX_FRIENDS = 12;
+
+const PERSONALITIES = [
+  { name: "のんびりや", lines: ["きょうもいい天気だね〜", "おひるねって最高だよね", "あわてない、あわてない", "ぼーっとするの、だいすき"] },
+  { name: "おちゃめ", lines: ["ねえねえ、おもしろい話して!", "いたずらしちゃおっかな〜", "えへへ、来てくれてうれしい!", "ドッキリ大成功〜!なんてね"] },
+  { name: "クール", lines: ["…別に、待ってたわけじゃないよ", "ふーん、まあいいんじゃない", "静かな時間もわるくないね", "…ありがと。聞こえた?"] },
+  { name: "がんばりや", lines: ["きょうも一日がんばるぞ!", "目標に向かって全力前進!", "あなたもファイトだよ!", "努力はうらぎらない!"] },
+  { name: "ロマンチスト", lines: ["星ってなんであんなにきれいなんだろう", "いつか海の見える家に住みたいな", "運命って、あると思う?", "夕焼けを見ると泣きそうになるんだ"] },
+];
+
+const HUNGRY_LINES = ["おなかすいたよ〜…", "なにか食べたいなあ…", "ぐぅ〜…(おなかの音)"];
+const BORED_LINES  = ["ひまだなあ…", "あそんでほしいな…", "なんだか退屈…"];
+const FEED_LINES   = ["おいしい〜!😋", "ごちそうさま!", "これ大好物!", "もぐもぐ…しあわせ…"];
+const FULL_LINES   = ["もうおなかいっぱいだよ〜", "これ以上は食べられない!"];
+const PLAY_LINES   = ["たのしい〜!🎉", "もう一回やろう!", "きみと遊ぶの最高!", "わーい!"];
+
+// ---- セーブデータ ----
+let state = load();
+function load() {
+  try {
+    const raw = localStorage.getItem("tomokore-save");
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { friends: [], friendships: [], news: [], lastTick: Date.now() };
+}
+function save() {
+  localStorage.setItem("tomokore-save", JSON.stringify(state));
+}
+
+let currentId = null; // 詳細画面で表示中のともだち
+
+const $ = (id) => document.getElementById(id);
+const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+function getFriend(id) {
+  return state.friends.find((f) => f.id === id);
+}
+function needsCare(f) {
+  return f.hunger < 30 || f.happy < 30;
+}
+function friendsOf(f) {
+  return state.friendships
+    .filter((p) => p.includes(f.id))
+    .map((p) => getFriend(p[0] === f.id ? p[1] : p[0]))
+    .filter(Boolean);
+}
+
+function addNews(text) {
+  state.news.unshift(text);
+  state.news = state.news.slice(0, 5);
+  $("news").textContent = text;
+}
+
+// ---- ホーム描画 ----
+function renderHome() {
+  const rooms = $("rooms");
+  rooms.innerHTML = "";
+  for (const f of state.friends) {
+    const div = document.createElement("div");
+    div.className = "room";
+    div.innerHTML = `<div class="face">${f.face}</div><div class="rname">${escapeHtml(f.name)}</div>`;
+    if (needsCare(f)) {
+      const b = document.createElement("div");
+      b.className = "badge";
+      b.textContent = "!";
+      div.appendChild(b);
+    }
+    div.addEventListener("click", () => openDetail(f.id));
+    rooms.appendChild(div);
+  }
+  if (state.friends.length < MAX_FRIENDS) {
+    const div = document.createElement("div");
+    div.className = "room empty";
+    div.innerHTML = `<div class="face">➕</div><div class="rname">あたらしい子</div>`;
+    div.addEventListener("click", openAddModal);
+    rooms.appendChild(div);
+  }
+  if (state.news.length) $("news").textContent = state.news[0];
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ---- ともだち作成 ----
+let selFace = FACES[0];
+function buildFaceGrid() {
+  const grid = $("faceGrid");
+  grid.innerHTML = "";
+  for (const face of FACES) {
+    const d = document.createElement("div");
+    d.className = "fopt" + (face === selFace ? " sel" : "");
+    d.textContent = face;
+    d.addEventListener("click", () => {
+      selFace = face;
+      buildFaceGrid();
+    });
+    grid.appendChild(d);
+  }
+}
+function openAddModal() {
+  selFace = rand(FACES);
+  $("nameInput").value = "";
+  buildFaceGrid();
+  $("addModal").classList.add("show");
+}
+$("cancelBtn").addEventListener("click", () => $("addModal").classList.remove("show"));
+$("createBtn").addEventListener("click", () => {
+  const name = $("nameInput").value.trim();
+  if (!name) {
+    $("nameInput").placeholder = "なまえを入れてね!";
+    return;
+  }
+  const f = {
+    id: Date.now() + "" + Math.floor(Math.random() * 1000),
+    name, face: selFace,
+    personality: Math.floor(Math.random() * PERSONALITIES.length),
+    hunger: 80, happy: 80, xp: 0, level: 1,
+  };
+  state.friends.push(f);
+  addNews(`🎉 ${f.name} がひっこしてきた!`);
+  save();
+  $("addModal").classList.remove("show");
+  renderHome();
+});
+
+// ---- 詳細画面 ----
+function openDetail(id) {
+  currentId = id;
+  $("home").classList.remove("show");
+  $("detail").classList.add("show");
+  renderDetail();
+  const f = getFriend(id);
+  if (f.hunger < 30) say(rand(HUNGRY_LINES));
+  else if (f.happy < 30) say(rand(BORED_LINES));
+  else say(rand(PERSONALITIES[f.personality].lines));
+}
+function closeDetail() {
+  currentId = null;
+  $("detail").classList.remove("show");
+  $("home").classList.add("show");
+  renderHome();
+}
+$("backBtn").addEventListener("click", closeDetail);
+
+function renderDetail() {
+  const f = getFriend(currentId);
+  if (!f) return closeDetail();
+  $("bigFace").textContent = f.face;
+  $("dName").textContent = f.name;
+  $("dPersona").textContent = `せいかく: ${PERSONALITIES[f.personality].name}`;
+  $("dLevel").textContent = f.level;
+  $("hungerBar").firstElementChild.style.width = f.hunger + "%";
+  $("happyBar").firstElementChild.style.width = f.happy + "%";
+  $("xpBar").firstElementChild.style.width = Math.min(100, (f.xp / xpNeeded(f)) * 100) + "%";
+  const pals = friendsOf(f);
+  $("dFriends").textContent = pals.length
+    ? "ともだち: " + pals.map((p) => p.face + p.name).join("、")
+    : "まだマンションにともだちがいないみたい…";
+}
+
+function say(text) {
+  const b = $("bubble");
+  b.textContent = text;
+  b.classList.remove("pop");
+  void b.offsetWidth; // アニメーション再生のためリフロー
+  b.classList.add("pop");
+}
+
+function xpNeeded(f) {
+  return f.level * 30;
+}
+function gainXp(f, n) {
+  f.xp += n;
+  while (f.xp >= xpNeeded(f)) {
+    f.xp -= xpNeeded(f);
+    f.level++;
+    addNews(`💖 ${f.name} とのなかよしレベルが ${f.level} になった!`);
+    setTimeout(() => say(`なかよしレベル ${f.level} だって!うれしい〜!🎉`), 600);
+  }
+}
+
+$("feedBtn").addEventListener("click", () => {
+  const f = getFriend(currentId);
+  if (!f) return;
+  if (f.hunger >= 95) {
+    say(rand(FULL_LINES));
+    return;
+  }
+  const wasHungry = f.hunger < 30;
+  f.hunger = Math.min(100, f.hunger + 40);
+  gainXp(f, wasHungry ? 10 : 5);
+  say(rand(FEED_LINES));
+  save();
+  renderDetail();
+});
+
+$("playBtn").addEventListener("click", () => {
+  const f = getFriend(currentId);
+  if (!f) return;
+  const wasBored = f.happy < 30;
+  f.happy = Math.min(100, f.happy + 35);
+  f.hunger = Math.max(0, f.hunger - 5); // 遊ぶとちょっとおなかがすく
+  gainXp(f, wasBored ? 10 : 5);
+  say(rand(PLAY_LINES));
+  save();
+  renderDetail();
+});
+
+$("talkBtn").addEventListener("click", () => {
+  const f = getFriend(currentId);
+  if (!f) return;
+  let line;
+  if (f.hunger < 30 && Math.random() < 0.6) line = rand(HUNGRY_LINES);
+  else if (f.happy < 30 && Math.random() < 0.6) line = rand(BORED_LINES);
+  else {
+    line = rand(PERSONALITIES[f.personality].lines);
+    const pals = friendsOf(f);
+    if (pals.length && Math.random() < 0.3) {
+      line = `${rand(pals).name} って、いい子だよね〜`;
+    }
+  }
+  gainXp(f, 2);
+  say(line);
+  save();
+  renderDetail();
+});
+
+$("byeBtn").addEventListener("click", () => {
+  const f = getFriend(currentId);
+  if (!f) return;
+  if (!confirm(`本当に ${f.name} とおわかれする?`)) return;
+  state.friends = state.friends.filter((x) => x.id !== f.id);
+  state.friendships = state.friendships.filter((p) => !p.includes(f.id));
+  addNews(`👋 ${f.name} がひっこしていった…`);
+  save();
+  closeDetail();
+});
+
+// ---- 時間経過(まんぷく度・ごきげん度がゆっくり減る) ----
+function tick() {
+  const now = Date.now();
+  const dt = Math.min((now - state.lastTick) / 1000, 60 * 60 * 24); // 最大1日ぶん
+  state.lastTick = now;
+  for (const f of state.friends) {
+    f.hunger = Math.max(0, f.hunger - dt * (100 / 21600)); // 約6時間で空腹に
+    f.happy = Math.max(0, f.happy - dt * (100 / 28800));   // 約8時間で退屈に
+  }
+  // ともだち同士が仲良くなるイベント
+  if (state.friends.length >= 2 && Math.random() < 0.03) {
+    const a = rand(state.friends);
+    const b = rand(state.friends.filter((x) => x.id !== a.id));
+    const exists = state.friendships.some((p) => p.includes(a.id) && p.includes(b.id));
+    if (!exists) {
+      state.friendships.push([a.id, b.id]);
+      addNews(`✨ ${a.name} と ${b.name} がともだちになった!`);
+    }
+  }
+  save();
+  if (currentId) renderDetail();
+  else renderHome();
+}
+setInterval(tick, 5000);
+
+// ---- 起動 ----
+tick();
+renderHome();
+</script>
+</body>
+</html>
