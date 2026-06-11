@@ -23,7 +23,7 @@
   #hudLap   { top: 10px; left: 12px; font-size: 20px; }
   #hudRank  { top: 6px; right: 12px; font-size: 30px; }
   #hudTime  { top: 40px; left: 12px; font-size: 14px; opacity: 0.9; }
-  #hudSpeed { bottom: 120px; right: 14px; font-size: 18px; }
+  #hudSpeed { top: 44px; right: 12px; font-size: 15px; }
   #hudMsg {
     top: 26%; left: 0; right: 0;
     text-align: center; font-size: 52px;
@@ -43,9 +43,9 @@
   }
   .ctl:active { background: rgba(255,255,255,0.5); }
   #btnL { left: 14px; }
-  #btnR { left: 112px; }
+  #btnR { right: 14px; }
   #btnItem {
-    right: 14px;
+    right: 14px; bottom: 118px;
     background: rgba(255,215,0,0.35);
     border: 3px solid rgba(255,255,255,0.6);
     font-size: 38px;
@@ -269,11 +269,11 @@ const PLAYER_CHARS = [
 let playerCharIdx = 0;
 
 const NPC_DEFS = [
-  { emoji: "🚓", name: "パトカー", skill: 0.95 },
-  { emoji: "🚕", name: "タクシー", skill: 0.91 },
-  { emoji: "🚐", name: "バンちゃん", skill: 0.88 },
-  { emoji: "🛵", name: "スクーター", skill: 0.85 },
-  { emoji: "🚜", name: "トラクター", skill: 0.82 },
+  { emoji: "🚓", name: "パトカー", skill: 0.99 },
+  { emoji: "🚕", name: "タクシー", skill: 0.97 },
+  { emoji: "🚐", name: "バンちゃん", skill: 0.95 },
+  { emoji: "🛵", name: "スクーター", skill: 0.92 },
+  { emoji: "🚜", name: "トラクター", skill: 0.89 },
 ];
 
 const MAX_SPEED = 12000;       // 単位/秒
@@ -310,7 +310,7 @@ function resetRace() {
     traveled: 0,
     offset: (i % 2 ? 0.45 : -0.45),
     laneTarget: (i % 2 ? 0.45 : -0.45),
-    speed: 0, spinT: 0,
+    speed: 0, spinT: 0, boostT: 0,
     img: emojiSprite(d.emoji),
   }));
   bananas = [];
@@ -460,10 +460,10 @@ function updatePlayer(dt) {
   // ハンドル
   if (p.spinT <= 0 && raceState === "race") {
     const steer = (input.left ? -1 : 0) + (input.right ? 1 : 0);
-    p.x += steer * 1.7 * sp * dt;
+    p.x += steer * 1.9 * sp * dt;
   }
-  // カーブの遠心力
-  p.x -= seg.curve * sp * 0.25 * dt;
+  // カーブの遠心力(強め: カーブはしっかり曲がらないと飛び出す)
+  p.x -= seg.curve * sp * 0.33 * dt;
   p.x = clamp(p.x, -2.2, 2.2);
 
   // ブーストパッド
@@ -541,13 +541,17 @@ function updateNpcs(dt) {
   const pRank = playerProgress();
   for (const n of npcs) {
     n.spinT = Math.max(0, n.spinT - dt);
+    n.boostT = Math.max(0, n.boostT - dt);
+    // CPUもたまにダッシュを使う
+    if (n.boostT <= 0 && Math.random() < dt * 0.06) n.boostT = 1.3;
     const seg = segAt(n.z);
 
     let target = MAX_SPEED * n.skill * (1 - Math.min(0.25, Math.abs(seg.curve) * 0.035));
-    // ゴムバンド(離されすぎ/離しすぎ防止)
+    // ゴムバンド(離されすぎ防止・手加減は控えめ)
     const gap = (pRank - npcProgress(n)) / TRACK_LEN;
-    target *= clamp(1 + gap * 0.25, 0.86, 1.14);
+    target *= clamp(1 + gap * 0.2, 0.93, 1.1);
     if (n.spinT > 0) target *= 0.25;
+    if (n.boostT > 0) target *= 1.25;
     if (seg.boost && Math.abs(n.offset) < 1) target *= 1.2;
 
     if (n.speed < target) n.speed = Math.min(target, n.speed + ACCEL * dt);
@@ -792,7 +796,7 @@ function render(dt) {
   let rot = steer * 0.12 * sp;
   if (p.spinT > 0) rot = p.spinT * 11;
   ctx.save();
-  ctx.translate(W / 2, H - kw * 0.55 + bounce);
+  ctx.translate(W / 2, H - kw * 0.55 - 36 + bounce);
   ctx.rotate(rot);
   // ブースト炎
   if (p.boostT > 0) {
